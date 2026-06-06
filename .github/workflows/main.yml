@@ -5,9 +5,9 @@ on:
 
 jobs:
   remote-access:
-    runs-on: macos-latest   # or macos-15 (Intel)
+    runs-on: macos-latest
     steps:
-      - name: Setup VNC user and permissions
+      - name: Setup VNC user and start tunnel
         run: |
           # 1. Enable Screen Sharing
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
@@ -22,38 +22,22 @@ jobs:
           sudo createhomedir -c -u vncuser 2>/dev/null || true
           sudo dscl . -append /Groups/admin GroupMembership vncuser
 
-          # 3. Grant Remote Management (VNC) rights to vncuser
+          # 3. Grant remote management rights (VNC)
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -allowAccessFor -specifiedUsers
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -users vncuser -access -on -privs -all
 
-          # 4. Reset Screen Capture permissions and re-allow vncagent (robust TCC insertion)
+          # 4. Reset screen capture permissions (this is enough; no manual SQL needed)
           sudo tccutil reset ScreenCapture
-          sleep 2
-          # Dynamically build INSERT statement matching the actual number of columns
-          TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
-          SERVICE="kTCCServiceScreenCapture"
-          CLIENT="/System/Library/CoreServices/RemoteManagement/AppleVNCServer/vncagent"
-          # Get column count
-          COL_COUNT=$(sudo sqlite3 "$TCC_DB" "PRAGMA table_info(access);" | wc -l)
-          # Generate placeholders (?,? ...) with COL_COUNT entries
-          PLACEHOLDERS=$(printf '?%.0s,' $(seq 1 $COL_COUNT) | sed 's/,$//')
-          # Insert with all columns set to NULL except the first 5
-          sudo sqlite3 "$TCC_DB" <<EOF
-          INSERT OR REPLACE INTO access VALUES($PLACEHOLDERS)
-          SELECT '$SERVICE', '$CLIENT', 0, 1, 1, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
-          WHERE NOT EXISTS (SELECT 1 FROM access WHERE service='$SERVICE' AND client='$CLIENT');
-          EOF
 
-          # 5. Auto-login (requires reboot – see note)
+          # 5. Auto‑login (requires reboot – see note below)
           sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser vncuser
           sudo security add-generic-password -a "vncuser" -w "YourPassword123!" \
             -s "com.apple.loginwindow" -T "/System/Library/CoreServices/Software Update.app" \
             -T "/System/Library/CoreServices/Setup Assistant.app" 2>/dev/null || true
 
-      - name: Install and run zrok tunnel
-        run: |
+          # 6. Install zrok and start the tunnel
           brew install zrok
           zrok enable ahHD9lCRm1Qj --headless
           nohup zrok share private --backend-mode tcpTunnel localhost:5900 --headless > /tmp/zrok.log 2>&1 &
@@ -62,4 +46,6 @@ jobs:
           echo "Share token (use on Windows):"
           grep -oE '[a-f0-9]{16,}' /tmp/zrok.log | head -1
           echo "======================================"
+
+          # Keep job alive
           tail -f /dev/null
