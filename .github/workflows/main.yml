@@ -10,7 +10,7 @@ jobs:
       - name: Set up VNC and Password
         run: |
           # Configure a password for the runner user
-          sudo dscl . -passwd /Users/runner "SecretPassword123"
+          sudo dscl . -passwd /Users/runner "SecretPassword123" 2>/dev/null || true
           
           # Enable macOS Screen Sharing (VNC)
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
