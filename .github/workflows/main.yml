@@ -1,19 +1,62 @@
-name: macOS Remote Desktop
+name: macOS VNC with zrok
 
 on:
-  workflow_dispatch: # Allows you to trigger this manually
+  workflow_dispatch:   # manual trigger
 
 jobs:
   remote-access:
-    runs-on: macos-latest
+    runs-on: macos-15-arm64   # or macos-15 (Intel)
+    
     steps:
-      - name: Install and configure zrok
+      - name: Enable Screen Sharing and Create VNC User
         run: |
+          # 1. Enable the built-in Screen Sharing service
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
-          sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "YourPassword123!" -admin
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -allowAccessFor -specifiedUsers
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -users vncuser -access -on -privs -all
+
+          # 2. Create a local user 'vncuser' with a known password
+          sudo dscl . -create /Users/vncuser
+          sudo dscl . -create /Users/vncuser RealName "VNC User"
+          sudo dscl . -create /Users/vncuser UniqueID 502
+          sudo dscl . -create /Users/vncuser PrimaryGroupID 20
+          sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
+          sudo dscl . -passwd /Users/vncuser "YourPassword123!"
+          sudo createhomedir -c -u vncuser 2>/dev/null || true
+          sudo dscl . -append /Groups/admin GroupMembership vncuser
+
+          # 3. Grant remote management (VNC) rights to vncuser
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -activate -configure -allowAccessFor -specifiedUsers
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -users vncuser -access -on -privs -all
+
+          # 4. Reset Screen Capture permissions and force allow vncagent
+          sudo tccutil reset ScreenCapture
+          sleep 2
+          sudo sqlite3 /Library/Application\ Support/com.apple.TCC/TCC.db \
+            "INSERT OR REPLACE INTO access VALUES('kTCCServiceScreenCapture','/System/Library/CoreServices/RemoteManagement/AppleVNCServer/vncagent',0,1,1,1,NULL,NULL,NULL,'UNUSED',0,0);"
+
+          # 5. Enable auto-login for vncuser (requires reboot – see note above)
+          sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser vncuser
+          # Store password in keychain (needed for auto-login)
+          sudo security add-generic-password -a "vncuser" -w "YourPassword123!" -s "com.apple.loginwindow" -T "/System/Library/CoreServices/Software Update.app" -T "/System/Library/CoreServices/Setup Assistant.app" 2>/dev/null || true
+
+      - name: Install and Run zrok Tunnel
+        run: |
+          # Install zrok via Homebrew
           brew install zrok
+
+          # Enable zrok environment (replace with your actual token)
           zrok enable ahHD9lCRm1Qj --headless
-          zrok share private --backend-mode tcpTunnel localhost:5900 --headless &
+
+          # Start sharing VNC port 5900 in the background
+          nohup zrok share private --backend-mode tcpTunnel localhost:5900 --headless > /tmp/zrok.log 2>&1 &
+          sleep 5
+
+          # Display the share token (you will use this on your Windows machine)
+          echo "======================================"
+          echo "Share token (use on Windows):"
+          grep -oE '[a-f0-9]{16,}' /tmp/zrok.log | head -1
+          echo "======================================"
+
+          # Keep the job alive forever (tunnel stays open)
           tail -f /dev/null
