@@ -21,4 +21,4 @@ jobs:
           sudo zrok version
           zrok enable ahHD9lCRm1Qj --headless
               zrok share private --backend-mode tcpTunnel localhost:5900 --headless &
-              sleep infinity
+              tail -f /dev/null
