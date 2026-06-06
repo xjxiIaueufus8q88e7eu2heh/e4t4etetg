@@ -28,18 +28,25 @@ jobs:
           sudo dscl . -append /Groups/admin GroupMembership runneradmin
           sudo createhomedir -c -u runneradmin > /dev/null 2>&1
 
-      - name: 'Create Dummy Display'
+      - name: 'Install Homebrew and BetterDisplay'
         run: |
-          DUMMY_DISPLAY_NAME="FHD-DUMMY"
-          DUMMY_DISPLAY_WIDTH=1920
-          DUMMY_DISPLAY_HEIGHT=1080
+          # Install Homebrew if not already present
+          if ! command -v brew &> /dev/null; then
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+          brew update
+          # Install BetterDisplay for dummy display creation
+          brew install --cask betterdisplay
 
-          # Download the dummy display creation script
-          curl -o /tmp/create_dummy_display.sh https://raw.githubusercontent.com/UnQOfficial/remote-desktop-workflows/main/scripts/macos/create_dummy_display.sh
-          chmod +x /tmp/create_dummy_display.sh
-
-          # Run the script to create the dummy display
-          sudo /tmp/create_dummy_display.sh "$DUMMY_DISPLAY_NAME" "$DUMMY_DISPLAY_WIDTH" "$DUMMY_DISPLAY_HEIGHT"
+      - name: 'Create Dummy Display with BetterDisplay'
+        run: |
+          # Launch BetterDisplay and create a dummy display
+          open -a BetterDisplay
+          # Wait for BetterDisplay to initialize
+          sleep 5
+          # Use BetterDisplay's CLI to create a dummy display
+          # Adjust the resolution as needed
+          betterdisplaycli create dummy --width 1920 --height 1080 --name "GitHub Runner Dummy"
 
       - name: 'Install and Run Zrok Tunnel'
         run: |
