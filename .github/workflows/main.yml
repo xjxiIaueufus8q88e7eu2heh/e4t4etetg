@@ -7,18 +7,13 @@ jobs:
   remote-access:
     runs-on: macos-latest
     steps:
-      - name: Set up VNC and Password
+      - name: Install and configure zrok
         run: |
-          # Configure a password for the runner user
-          sudo dscl . -passwd /Users/runner "SecretPassword123" 2>/dev/null || true
-          
-          # Enable macOS Screen Sharing (VNC)
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
-
-      - name: shit
-        run: |
+          sudo sysadminctl -addUser vncuser -fullName "VNC User" -password "YourPassword123!" -admin
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -allowAccessFor -specifiedUsers
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -configure -users vncuser -access -on -privs -all
           brew install zrok
-          sudo zrok version
           zrok enable ahHD9lCRm1Qj --headless
-              zrok share private --backend-mode tcpTunnel localhost:5900 --headless &
-              tail -f /dev/null
+          zrok share private --backend-mode tcpTunnel localhost:5900 --headless &
+          tail -f /dev/null
