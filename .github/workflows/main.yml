@@ -15,28 +15,7 @@ jobs:
           # Enable macOS Screen Sharing (VNC)
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
 
-      - name: Install and Configure Ngrok
-        env:
-          NGROK_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      - name: shit
         run: |
-          # Install Ngrok via Homebrew
-          brew install ngrok/ngrok/ngrok
-          
-          # Configure the authentication token
-          ngrok config add-authtoken "$NGROK_TOKEN"
-
-      - name: Start Reverse Tunnel
-        run: |
-          # Create a TCP tunnel pointing to the native VNC port 5900
-          echo "Starting tunnel..."
-          ngrok tcp 5900 --log=stdout &
-          
-          # Allow the background tunnel process time to establish a connection
-          sleep 5
-          
-          # Extract and display the public connection URL from the local Ngrok API
-          curl --silent http://127.0.0 | jq '.tunnels[0].public_url'
-          
-          # Keep the workflow active so the runner does not terminate instantly
-          echo "Tunnel is live. Keep-alive loop running..."
-          while true; do sleep 60; done
+          sudo brew install zrok
+          sudo zrok version
