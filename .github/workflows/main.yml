@@ -5,7 +5,7 @@ on:
 
 jobs:
   remote-access:
-    runs-on: macos-15-arm64   # or macos-15 (Intel)
+    runs-on: macos-latest   # or macos-15 (Intel)
     
     steps:
       - name: Enable Screen Sharing and Create VNC User
