@@ -5,7 +5,7 @@ on:
 
 jobs:
   remote-access:
-    runs-on: macos-15-arm64   # or macos-15 for Intel
+    runs-on: macos-latest   # or macos-15 for Intel
     steps:
       - name: Setup VNC user and tunnel
         run: |
