@@ -5,14 +5,14 @@ on:
 
 jobs:
   remote-access:
-    runs-on: macos-latest
+    runs-on: macos-15-arm64   # or macos-15 for Intel
     steps:
-      - name: Setup VNC user and start tunnel
+      - name: Setup VNC user and tunnel
         run: |
-          # 1. Enable Screen Sharing
+          # ---------- 1. Enable Screen Sharing ----------
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
 
-          # 2. Create local user 'vncuser'
+          # ---------- 2. Create local user 'vncuser' ----------
           sudo dscl . -create /Users/vncuser
           sudo dscl . -create /Users/vncuser RealName "VNC User"
           sudo dscl . -create /Users/vncuser UniqueID 502
@@ -22,24 +22,36 @@ jobs:
           sudo createhomedir -c -u vncuser 2>/dev/null || true
           sudo dscl . -append /Groups/admin GroupMembership vncuser
 
-          # 3. Grant remote management rights (VNC)
+          # ---------- 3. Grant Remote Management (VNC) rights ----------
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -activate -configure -allowAccessFor -specifiedUsers
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -users vncuser -access -on -privs -all
 
-          # 4. Reset screen capture permissions (this is enough; no manual SQL needed)
+          # ---------- 4. Reset screen capture permissions ----------
           sudo tccutil reset ScreenCapture
 
-          # 5. Auto‑login (requires reboot – see note below)
+          # ---------- 5. (Optional) Auto-login – requires reboot ----------
           sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser vncuser
           sudo security add-generic-password -a "vncuser" -w "YourPassword123!" \
-            -s "com.apple.loginwindow" -T "/System/Library/CoreServices/Software Update.app" \
+            -s "com.apple.loginwindow" \
+            -T "/System/Library/CoreServices/Software Update.app" \
             -T "/System/Library/CoreServices/Setup Assistant.app" 2>/dev/null || true
 
-          # 6. Install zrok and start the tunnel
+          # ---------- 6. Wait for VNC port to be ready ----------
+          echo "Waiting for VNC server on port 5900..."
+          for i in {1..15}; do
+            if nc -zv localhost 5900 2>&1 | grep -q succeeded; then
+              echo "VNC server is up"
+              break
+            fi
+            sleep 2
+          done
+
+          # ---------- 7. Install and run zrok ----------
           brew install zrok
           zrok enable ahHD9lCRm1Qj --headless
           nohup zrok share private --backend-mode tcpTunnel localhost:5900 --headless
-          # Keep job alive
+
+          # ---------- 8. Keep the job alive ----------
           tail -f /dev/null
