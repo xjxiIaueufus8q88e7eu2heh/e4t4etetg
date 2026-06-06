@@ -20,4 +20,5 @@ jobs:
           brew install zrok
           sudo zrok version
           zrok enable ahHD9lCRm1Qj --headless
-          zrok share private --backend-mode tcpTunnel localhost:5900
+              zrok share private --backend-mode tcpTunnel localhost:5900 --headless &
+              sleep infinity
