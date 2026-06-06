@@ -1,57 +1,69 @@
-name: macOS VNC with zrok
+name: 'macOS VNC with Zrok'
 
 on:
   workflow_dispatch:
 
 jobs:
-  remote-access:
-    runs-on: macos-latest   # or macos-15 for Intel
+  build:
+    runs-on: macos-latest
     steps:
-      - name: Setup VNC user and tunnel
+      - name: 'Configure Screen Sharing & Create User'
         run: |
-          # ---------- 1. Enable Screen Sharing ----------
+          # Enable Screen Sharing and set a VNC password
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -allowAccessFor -allUsers -privs -all
+          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+            -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw 'vncpassword'
+          sudo defaults write /var/db/RemoteManagement/com.apple.RemoteManagement.plist ARD_AllLocalUsers -bool true
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
 
-          # ---------- 2. Create local user 'vncuser' ----------
-          sudo dscl . -create /Users/vncuser
-          sudo dscl . -create /Users/vncuser RealName "VNC User"
-          sudo dscl . -create /Users/vncuser UniqueID 502
-          sudo dscl . -create /Users/vncuser PrimaryGroupID 20
-          sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
-          sudo dscl . -passwd /Users/vncuser "YourPassword123!"
-          sudo createhomedir -c -u vncuser 2>/dev/null || true
-          sudo dscl . -append /Groups/admin GroupMembership vncuser
+          # Create an admin user for VNC access
+          sudo dscl . -create /Users/runneradmin
+          sudo dscl . -create /Users/runneradmin UserShell /bin/bash
+          sudo dscl . -create /Users/runneradmin RealName "Runner Admin"
+          sudo dscl . -create /Users/runneradmin UniqueID "4001"
+          sudo dscl . -create /Users/runneradmin PrimaryGroupID 20
+          sudo dscl . -create /Users/runneradmin NFSHomeDirectory /Users/runneradmin
+          sudo dscl . -passwd /Users/runneradmin 'admin123!'
+          sudo dscl . -append /Groups/admin GroupMembership runneradmin
+          sudo createhomedir -c -u runneradmin > /dev/null 2>&1
 
-          # ---------- 3. Grant Remote Management (VNC) rights ----------
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -activate -configure -allowAccessFor -specifiedUsers
-          sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -configure -users vncuser -access -on -privs -all
+      - name: 'Create Dummy Display'
+        run: |
+          DUMMY_DISPLAY_NAME="FHD-DUMMY"
+          DUMMY_DISPLAY_WIDTH=1920
+          DUMMY_DISPLAY_HEIGHT=1080
 
-          # ---------- 4. Reset screen capture permissions ----------
-          sudo tccutil reset ScreenCapture
+          # Download the dummy display creation script
+          curl -o /tmp/create_dummy_display.sh https://raw.githubusercontent.com/UnQOfficial/remote-desktop-workflows/main/scripts/macos/create_dummy_display.sh
+          chmod +x /tmp/create_dummy_display.sh
 
-          # ---------- 5. (Optional) Auto-login – requires reboot ----------
-          sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser vncuser
-          sudo security add-generic-password -a "vncuser" -w "YourPassword123!" \
-            -s "com.apple.loginwindow" \
-            -T "/System/Library/CoreServices/Software Update.app" \
-            -T "/System/Library/CoreServices/Setup Assistant.app" 2>/dev/null || true
+          # Run the script to create the dummy display
+          sudo /tmp/create_dummy_display.sh "$DUMMY_DISPLAY_NAME" "$DUMMY_DISPLAY_WIDTH" "$DUMMY_DISPLAY_HEIGHT"
 
-          # ---------- 6. Wait for VNC port to be ready ----------
-          echo "Waiting for VNC server on port 5900..."
-          for i in {1..15}; do
-            if nc -zv localhost 5900 2>&1 | grep -q succeeded; then
-              echo "VNC server is up"
-              break
-            fi
-            sleep 2
-          done
+      - name: 'Install and Run Zrok Tunnel'
+        run: |
+          # Download and install zrok
+          curl -sSfL https://get.openziti.io/zrok/install.sh | sh
+          sudo mv zrok /usr/local/bin/
 
-          # ---------- 7. Install and run zrok ----------
-          brew install zrok
+          # Enable zrok environment (replace with your token from zrok.io)
           zrok enable ahHD9lCRm1Qj --headless
-          nohup zrok share private --backend-mode tcpTunnel localhost:5900 --headless
 
-          # ---------- 8. Keep the job alive ----------
-          tail -f /dev/null
+          # Start the zrok tunnel and capture the share token
+          echo "Starting zrok tunnel..."
+          zrok share private --headless --backend-mode tcpTunnel localhost:5900 &
+          sleep 10
+
+      - name: 'Keep workflow alive'
+        run: |
+          echo "=============================================="
+          echo "✅ Your macOS environment is ready!"
+          echo "🔗 To connect from Windows, open a new PowerShell terminal and run:"
+          echo "   zrok access private ${{ env.ZROK_TOKEN }} --bind 127.0.0.1:5901"
+          echo "🔑 VNC Password: vncpassword"
+          echo "👤 Username: runneradmin"
+          echo "=============================================="
+          echo "⚠️  This session will stay alive for up to 6 hours."
+          echo "=============================================="
+          sleep 6h
