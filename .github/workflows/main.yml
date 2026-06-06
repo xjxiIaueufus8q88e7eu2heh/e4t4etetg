@@ -40,12 +40,6 @@ jobs:
           # 6. Install zrok and start the tunnel
           brew install zrok
           zrok enable ahHD9lCRm1Qj --headless
-          nohup zrok share private --backend-mode tcpTunnel localhost:5900 --headless > /tmp/zrok.log 2>&1 &
-          sleep 5
-          echo "======================================"
-          echo "Share token (use on Windows):"
-          grep -oE '[a-f0-9]{16,}' /tmp/zrok.log | head -1
-          echo "======================================"
-
+          nohup zrok share private --backend-mode tcpTunnel localhost:5900 --headless
           # Keep job alive
           tail -f /dev/null
