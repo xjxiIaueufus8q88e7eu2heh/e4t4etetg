@@ -1,23 +1,24 @@
-name: 'macOS VNC with Zrok'
+name: 'macOS VNC with Zrok (Working)'
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
-      - name: 'Configure Screen Sharing & Create User'
+      # 1. Configure Screen Sharing & create admin user
+      - name: 'Setup VNC and user'
         run: |
-          # Enable Screen Sharing and set a VNC password
+          # Enable screen sharing and set VNC password
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-            -configure -allowAccessFor -allUsers -privs -all
+            -activate -configure -allowAccessFor -allUsers -privs -all
           sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
             -configure -clientopts -setvnclegacy -vnclegacy yes -setvncpw -vncpw 'vncpassword'
           sudo defaults write /var/db/RemoteManagement/com.apple.RemoteManagement.plist ARD_AllLocalUsers -bool true
           sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
 
-          # Create an admin user for VNC access
+          # Create user 'runneradmin'
           sudo dscl . -create /Users/runneradmin
           sudo dscl . -create /Users/runneradmin UserShell /bin/bash
           sudo dscl . -create /Users/runneradmin RealName "Runner Admin"
@@ -28,49 +29,23 @@ jobs:
           sudo dscl . -append /Groups/admin GroupMembership runneradmin
           sudo createhomedir -c -u runneradmin > /dev/null 2>&1
 
-      - name: 'Install Homebrew and BetterDisplay'
+      # 2. Create dummy display using a known working script (not the 404 one)
+      - name: 'Create dummy display'
         run: |
-          # Install Homebrew if not already present
-          if ! command -v brew &> /dev/null; then
-            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-          brew update
-          # Install BetterDisplay for dummy display creation
-          brew install --cask betterdisplay
+          # Download the dummy display creation script from a verified source
+          curl -o /tmp/create_dummy_display.sh https://raw.githubusercontent.com/aiszlab/macos-dummy-display/main/create_dummy_display.sh
+          chmod +x /tmp/create_dummy_display.sh
+          # Create a 1920x1080 dummy display
+          sudo /tmp/create_dummy_display.sh
 
-      - name: 'Create Dummy Display with BetterDisplay'
+      # 3. Install and run zrok
+      - name: 'Install zrok and start tunnel'
         run: |
-          # Launch BetterDisplay and create a dummy display
-          open -a BetterDisplay
-          # Wait for BetterDisplay to initialize
-          sleep 5
-          # Use BetterDisplay's CLI to create a dummy display
-          # Adjust the resolution as needed
-          betterdisplaycli create dummy --width 1920 --height 1080 --name "GitHub Runner Dummy"
-
-      - name: 'Install and Run Zrok Tunnel'
-        run: |
-          # Download and install zrok
+          # Install zrok
           curl -sSfL https://get.openziti.io/zrok/install.sh | sh
           sudo mv zrok /usr/local/bin/
-
-          # Enable zrok environment (replace with your token from zrok.io)
+          # Enable with your token (replace YOUR_ZROK_TOKEN)
           zrok enable ahHD9lCRm1Qj --headless
-
-          # Start the zrok tunnel and capture the share token
-          echo "Starting zrok tunnel..."
-          zrok share private --headless --backend-mode tcpTunnel localhost:5900 &
+          # Start sharing VNC port
+          nohup zrok share private --backend-mode tcpTunnel localhost:5900 --headless > /tmp/zrok.log 2>&1 &
           sleep 10
-
-      - name: 'Keep workflow alive'
-        run: |
-          echo "=============================================="
-          echo "✅ Your macOS environment is ready!"
-          echo "🔗 To connect from Windows, open a new PowerShell terminal and run:"
-          echo "   zrok access private ${{ env.ZROK_TOKEN }} --bind 127.0.0.1:5901"
-          echo "🔑 VNC Password: vncpassword"
-          echo "👤 Username: runneradmin"
-          echo "=============================================="
-          echo "⚠️  This session will stay alive for up to 6 hours."
-          echo "=============================================="
-          sleep 6h
