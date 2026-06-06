@@ -17,5 +17,5 @@ jobs:
 
       - name: shit
         run: |
-          sudo brew install zrok
+          brew install zrok
           sudo zrok version
